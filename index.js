@@ -25,6 +25,11 @@ const AVATAR_BINDINGS_VERSION = 4;
 const GC_GRACE_MS = 24 * 60 * 60 * 1000;
 
 const avatarImageVerificationCache = new Map();
+// Short-lived per-user inventory cache. Theme JSON files are read again after
+// the TTL, while repeated manager opens during the same UI session avoid a
+// full directory parse.
+const themeInventoryCache = new Map();
+const THEME_INVENTORY_CACHE_MS = 2000;
 const avatarImageVerificationStats = { statCalls: 0, hashCalls: 0, bytesHashed: 0 };
 
 const DATA_URL_RE = /^data:image\/([a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/;
@@ -553,6 +558,63 @@ async function init(router) {
         res.json(statusPayload());
     });
 
+    // Read only this user's themes. The host settings endpoint also reads every
+    // preset and several unrelated directories, which makes library refresh costly.
+    router.get('/themes', async (req, res) => {
+        const directory = req.user && req.user.directories && req.user.directories.themes;
+        if (!directory) return res.status(400).json({ ok: false, error: 'User theme directory unavailable' });
+        try {
+            const cacheKey = path.resolve(directory);
+            const cached = themeInventoryCache.get(cacheKey);
+            const now = Date.now();
+            if (cached && now - cached.at < THEME_INVENTORY_CACHE_MS) {
+                res.set('Cache-Control', 'no-store');
+                res.set('X-Theme-Inventory-Cache', 'hit');
+                return res.json({ themes: cached.themes });
+            }
+            const files = (await fsp.readdir(directory)).filter(file => path.extname(file) === '.json').sort();
+            const themes = new Array(files.length);
+            let cursor = 0;
+            await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
+                while (cursor < files.length) {
+                    const index = cursor++;
+                    try {
+                        themes[index] = JSON.parse(await fsp.readFile(path.join(directory, files[index]), 'utf8'));
+                    } catch (error) {
+                        // Match the host inventory: omit invalid or disappearing files.
+                        if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+                    }
+                }
+            }));
+            const result = themes.filter(theme => theme !== undefined);
+            themeInventoryCache.set(cacheKey, { at: Date.now(), themes: result });
+            res.set('Cache-Control', 'no-store');
+            res.set('X-Theme-Inventory-Cache', 'miss');
+            res.json({ themes: result });
+        } catch (error) {
+            console.error('[theme-manager] GET /themes failed:', error.message);
+            res.status(500).json({ ok: false, error: 'Failed to read themes' });
+        }
+    });
+
+    router.get('/backgrounds', async (req, res) => {
+        const directory = req.user && req.user.directories && req.user.directories.backgrounds;
+        if (!directory) return res.status(400).json({ error: 'User background directory unavailable' });
+        try {
+            // The picker only needs filenames, not animation metadata for every image.
+            const entries = await fsp.readdir(directory, { withFileTypes: true });
+            const mime = require('mime-types');
+            const images = entries.filter(entry => {
+                const type = entry.isFile() && mime.lookup(entry.name);
+                return type && type.startsWith('image/');
+            }).map(entry => entry.name).sort(Intl.Collator().compare);
+            res.set('Cache-Control', 'no-store');
+            res.json({ images });
+        } catch (error) {
+            res.status(500).json({ error: 'Failed to list backgrounds' });
+        }
+    });
+
     router.get('/data', async (_req, res) => {
         try {
             const data = await readDataFile();
@@ -669,7 +731,8 @@ async function init(router) {
         const filePath = path.join(IMAGES_DIR, name);
         if (!filePath.startsWith(IMAGES_DIR + path.sep)) return res.status(403).json({ ok: false, error: 'Forbidden' });
 
-        res.sendFile(filePath, err => {
+        // Image names are content hashes; changed content receives a new URL.
+        res.sendFile(filePath, { maxAge: '1y', immutable: true }, err => {
             if (!err) return;
             if (err.code === 'ENOENT') res.status(404).json({ ok: false, error: 'Not found' });
             else { try { res.status(500).end(); } catch { /* noop */ } }
