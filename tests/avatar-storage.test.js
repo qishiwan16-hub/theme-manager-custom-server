@@ -23,7 +23,7 @@ async function imageRef(imagesDir, text, ext = 'png') {
     await fs.writeFile(path.join(imagesDir, name), raw);
     return {
         name,
-        url: '/api/plugins/theme-manager/images/' + name,
+        url: '/api/plugins/theme-manager-custom/images/' + name,
         sha256: 'sha256:' + crypto.createHash('sha256').update(raw).digest('hex'),
         bytes: raw.length,
         mime: 'image/' + (ext === 'jpg' ? 'jpeg' : ext),
@@ -173,7 +173,7 @@ test('GC keeps formal avatar references and removes only an old unreferenced ima
     const themeImage = await imageRef(f.imagesDir, 'theme-preview-image');
     const dataFile = path.join(f.root, 'theme-manager.json');
     await fs.writeFile(dataFile, JSON.stringify({
-        themeMeta: { Example: { imageData: '/api/plugins/theme-manager/images/' + themeImage.name } },
+        themeMeta: { Example: { imageData: '/api/plugins/theme-manager-custom/images/' + themeImage.name } },
     }), 'utf8');
     const youngOrphan = await imageRef(f.imagesDir, 'young-orphan-image');
     const orphan = await imageRef(f.imagesDir, 'old-orphan-image');

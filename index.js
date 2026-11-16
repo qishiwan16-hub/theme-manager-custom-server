@@ -19,7 +19,8 @@ const info = {
 const DATA_DIR = path.join(__dirname, 'data');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
 const DATA_FILE = path.join(DATA_DIR, 'theme-manager.json');
-const IMAGE_URL_PREFIX = '/api/plugins/theme-manager/images/';
+const IMAGE_URL_PREFIX = '/api/plugins/theme-manager-custom/images/';
+const LEGACY_IMAGE_URL_PREFIX = '/api/plugins/theme-manager/images/';
 const AVATAR_DATA_FILE = path.join(DATA_DIR, 'avatar-manifest.json');
 const AVATAR_SCHEMA_VERSION = 1;
 const AVATAR_CAPABILITY_VERSION = 1;
@@ -121,6 +122,16 @@ async function imageToDataUrl(name) {
     }
 }
 
+function normalizeLegacyImageUrls(value) {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) return value.forEach(normalizeLegacyImageUrls);
+    Object.keys(value).forEach(key => {
+        if (typeof value[key] === 'string' && value[key].startsWith(LEGACY_IMAGE_URL_PREFIX)) {
+            value[key] = IMAGE_URL_PREFIX + value[key].slice(LEGACY_IMAGE_URL_PREFIX.length);
+        } else if (value[key] && typeof value[key] === 'object') normalizeLegacyImageUrls(value[key]);
+    });
+}
+
 async function externalizeImages(value, keyHint = '') {
     if (!value || typeof value !== 'object') return;
 
@@ -208,6 +219,9 @@ function isCanonicalAvatarView(view) {
 }
 
 function validateAvatarImageRef(ref, label) {
+    if (ref && typeof ref.url === 'string' && ref.url.startsWith(LEGACY_IMAGE_URL_PREFIX)) {
+        ref = { ...ref, url: IMAGE_URL_PREFIX + ref.url.slice(LEGACY_IMAGE_URL_PREFIX.length) };
+    }
     if (!hasExactKeys(ref, ['name', 'url', 'sha256', 'bytes', 'mime'])) {
         throw avatarError('AVATAR_MANIFEST_INVALID', label + ' must be a canonical object', 422);
     }
@@ -620,6 +634,7 @@ async function init(router) {
     router.get('/data', async (_req, res) => {
         try {
             const data = await readDataFile();
+            normalizeLegacyImageUrls(data);
             res.json({ ok: true, data: data || null });
         } catch (err) {
             console.error('[theme-manager-custom] GET /data failed:', err.message);
@@ -630,6 +645,7 @@ async function init(router) {
     router.put('/data', async (req, res) => {
         try {
             const body = req.body;
+            normalizeLegacyImageUrls(body);
             if (!body || typeof body !== 'object' || Array.isArray(body)) {
                 return res.status(400).json({ ok: false, error: 'Body must be a JSON object' });
             }
