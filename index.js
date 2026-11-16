@@ -33,6 +33,7 @@ const avatarImageVerificationCache = new Map();
 // full directory parse.
 const themeInventoryCache = new Map();
 const THEME_INVENTORY_CACHE_MS = 2000;
+const ST_DATA_DIR = path.resolve(__dirname, '..', '..', 'data');
 const avatarImageVerificationStats = { statCalls: 0, hashCalls: 0, bytesHashed: 0 };
 
 const DATA_URL_RE = /^data:image\/([a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/;
@@ -577,7 +578,46 @@ async function init(router) {
     // Read only this user's themes. The host settings endpoint also reads every
     // preset and several unrelated directories, which makes library refresh costly.
     router.get('/themes', async (req, res) => {
-        const directory = req.user && req.user.directories && req.user.directories.themes;
+        let directory = req.user && req.user.directories && req.user.directories.themes;
+        // Some SillyTavern plugin mounting paths do not expose user directories.
+        // Keep the endpoint usable by resolving the user's existing themes folder
+        // from the configured data root, without touching any theme files.
+        if (!directory) {
+            const candidates = [];
+            try {
+                const users = await fsp.readdir(ST_DATA_DIR, { withFileTypes: true });
+                for (const user of users) {
+                    if (!user.isDirectory()) continue;
+                    const candidate = path.join(ST_DATA_DIR, user.name, 'themes');
+                    try {
+                        const files = await fsp.readdir(candidate);
+                        if (files.some(file => path.extname(file).toLowerCase() === '.json')) candidates.push({ candidate, count: files.length });
+                    } catch (_) {}
+                }
+            } catch (_) {}
+            directory = candidates.sort((a, b) => b.count - a.count)[0]?.candidate;
+        }
+        if (directory) {
+            try {
+                const currentFiles = await fsp.readdir(directory);
+                if (!currentFiles.some(file => path.extname(file).toLowerCase() === '.json')) directory = null;
+            } catch (_) { directory = null; }
+        }
+        if (!directory) {
+            try {
+                const users = await fsp.readdir(ST_DATA_DIR, { withFileTypes: true });
+                const candidates = [];
+                for (const user of users) {
+                    if (!user.isDirectory()) continue;
+                    const candidate = path.join(ST_DATA_DIR, user.name, 'themes');
+                    try {
+                        const files = await fsp.readdir(candidate);
+                        if (files.some(file => path.extname(file).toLowerCase() === '.json')) candidates.push({ candidate, count: files.length });
+                    } catch (_) {}
+                }
+                directory = candidates.sort((a, b) => b.count - a.count)[0]?.candidate;
+            } catch (_) {}
+        }
         if (!directory) return res.status(400).json({ ok: false, error: 'User theme directory unavailable' });
         try {
             const cacheKey = path.resolve(directory);
@@ -595,7 +635,11 @@ async function init(router) {
                 while (cursor < files.length) {
                     const index = cursor++;
                     try {
-                        themes[index] = JSON.parse(await fsp.readFile(path.join(directory, files[index]), 'utf8'));
+                        const theme = JSON.parse(await fsp.readFile(path.join(directory, files[index]), 'utf8'));
+                        if (theme && typeof theme === 'object' && (!theme.name || !String(theme.name).trim())) {
+                            theme.name = path.basename(files[index], '.json');
+                        }
+                        themes[index] = theme;
                     } catch (error) {
                         // Match the host inventory: omit invalid or disappearing files.
                         if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
@@ -603,6 +647,7 @@ async function init(router) {
                 }
             }));
             const result = themes.filter(theme => theme !== undefined);
+            console.log('[theme-manager-custom] GET /themes:', directory, result.length + '/' + files.length);
             themeInventoryCache.set(cacheKey, { at: Date.now(), themes: result });
             res.set('Cache-Control', 'no-store');
             res.set('X-Theme-Inventory-Cache', 'miss');
