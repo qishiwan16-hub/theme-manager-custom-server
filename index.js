@@ -14,7 +14,11 @@ const info = {
     description: 'Server-side persistence backend for the Theme Manager extension.',
 };
 
-const DATA_DIR = path.join(__dirname, 'data');
+// Keep the second revision's data outside the code repository and away from
+// the original plugin's data directory. SillyTavern resolves this from its root.
+const SILLYTAVERN_ROOT = path.resolve(__dirname, '..', '..');
+const CUSTOM_DATA_DIR = path.join(SILLYTAVERN_ROOT, 'data', 'shenhanyan', 'extensions', 'theme-manager-custom-data');
+const DATA_DIR = CUSTOM_DATA_DIR;
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
 const DATA_FILE = path.join(DATA_DIR, 'theme-manager.json');
 const IMAGE_URL_PREFIX = '/api/plugins/theme-manager/images/';
