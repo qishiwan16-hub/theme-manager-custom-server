@@ -7,13 +7,13 @@ Current version: **2.0.0**
 Install this folder into:
 
 ```text
-SillyTavern/plugins/theme-manager/
+SillyTavern/plugins/theme-manager-custom/
 ```
 
 Routes are mounted by SillyTavern under:
 
 ```text
-/api/plugins/theme-manager/
+/api/plugins/theme-manager-custom/
 ```
 
 Endpoints:
