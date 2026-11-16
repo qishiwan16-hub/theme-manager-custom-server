@@ -9,7 +9,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const info = {
-    id: 'theme-manager',
+    id: 'theme-manager-custom',
     name: 'Theme Manager Storage',
     description: 'Server-side persistence backend for the Theme Manager extension.',
 };
@@ -594,7 +594,7 @@ async function init(router) {
             res.set('X-Theme-Inventory-Cache', 'miss');
             res.json({ themes: result });
         } catch (error) {
-            console.error('[theme-manager] GET /themes failed:', error.message);
+            console.error('[theme-manager-custom] GET /themes failed:', error.message);
             res.status(500).json({ ok: false, error: 'Failed to read themes' });
         }
     });
@@ -622,7 +622,7 @@ async function init(router) {
             const data = await readDataFile();
             res.json({ ok: true, data: data || null });
         } catch (err) {
-            console.error('[theme-manager] GET /data failed:', err.message);
+            console.error('[theme-manager-custom] GET /data failed:', err.message);
             res.status(500).json({ ok: false, error: 'Failed to read data' });
         }
     });
@@ -639,7 +639,7 @@ async function init(router) {
             });
             res.json({ ok: true, data: body });
         } catch (err) {
-            console.error('[theme-manager] PUT /data failed:', err.message);
+            console.error('[theme-manager-custom] PUT /data failed:', err.message);
             res.status(500).json({ ok: false, error: 'Failed to write data' });
         }
     });
@@ -660,7 +660,7 @@ async function init(router) {
                 manifest: dataset.manifest,
             });
         } catch (error) {
-            console.error('[theme-manager] GET /avatars/state failed:', error.message);
+            console.error('[theme-manager-custom] GET /avatars/state failed:', error.message);
             res.status(error.status || 500).json({
                 ok: false,
                 state: error.status === 422 ? 'invalid' : 'error',
@@ -681,7 +681,7 @@ async function init(router) {
                 manifest: dataset.manifest,
             });
         } catch (error) {
-            if (error.status !== 409) console.error('[theme-manager] PUT /avatars/manifest failed:', error.message);
+            if (error.status !== 409) console.error('[theme-manager-custom] PUT /avatars/manifest failed:', error.message);
             res.status(error.status || 500).json({
                 ok: false,
                 error: error.code || 'AVATAR_MANIFEST_WRITE_FAILED',
@@ -702,7 +702,7 @@ async function init(router) {
             }
             res.json({ ok: true, image: stored, name: stored.name, url: stored.url });
         } catch (err) {
-            console.error('[theme-manager] POST /images failed:', err.message);
+            console.error('[theme-manager-custom] POST /images failed:', err.message);
             res.status(500).json({ ok: false, error: 'Failed to store image' });
         }
     });
@@ -721,7 +721,7 @@ async function init(router) {
             }
             res.json({ ok: true, images });
         } catch (err) {
-            console.error('[theme-manager] POST /images/batch-fetch failed:', err.message);
+            console.error('[theme-manager-custom] POST /images/batch-fetch failed:', err.message);
             res.status(500).json({ ok: false, error: 'Failed to fetch images' });
         }
     });
@@ -751,7 +751,7 @@ async function init(router) {
             const result = await withStorageWriteLock(() => gcImages(dryRun, { expectedFiles }));
             res.json({ ok: true, ...result });
         } catch (err) {
-            console.error('[theme-manager] POST /gc failed:', err.message);
+            console.error('[theme-manager-custom] POST /gc failed:', err.message);
             res.status(err.status || 500).json({ ok: false, error: err.code || 'Failed to gc images' });
         }
     });
@@ -760,13 +760,13 @@ async function init(router) {
         if (err.type === 'entity.too.large') {
             res.status(413).json({ ok: false, error: 'Data is too large. Export first or migrate in smaller batches.' });
         } else {
-            console.error('[theme-manager] Unexpected error:', err.message);
+            console.error('[theme-manager-custom] Unexpected error:', err.message);
             res.status(500).json({ ok: false, error: 'Internal server error' });
         }
     });
 
     ensureDirsSync();
-    console.log('[theme-manager] Plugin loaded. Data dir: ' + DATA_DIR);
+    console.log('[theme-manager-custom] Plugin loaded. Data dir: ' + DATA_DIR);
 }
 
 async function exit() {
